@@ -26,7 +26,9 @@ export async function renderDashboard(root) {
     h('h2', {}, 'Quick links'),
     h('div', { class: 'actions' }, [
       h('a', { class: 'btn', href: '#/tasks?mine=1' }, 'My tasks'),
-      h('a', { class: 'btn secondary', href: '#/companies' }, 'Companies'),
+      ['client_owner','client_executive'].includes(user.role)
+        ? null
+        : h('a', { class: 'btn secondary', href: '#/companies' }, 'Companies'),
       (user.role === 'super_admin' || user.role === 'admin')
         ? h('a', { class: 'btn secondary', href: '#/users' }, 'Users') : null,
       h('a', { class: 'btn secondary', href: '#/account' }, 'Account'),

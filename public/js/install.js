@@ -13,6 +13,18 @@ let deferredPrompt = null;
 let dismissedThisSession = false;          // resets on tab reload
 const subs = new Set();
 
+// Permanent flag (survives reloads / sessions). Set once the user has engaged
+// with the install flow (tapped Install / How) or the app is detected as
+// installed - so we never nag them again on this device.
+const HANDLED_KEY = 'zentax_install_handled';
+function readHandled() {
+  try { return localStorage.getItem(HANDLED_KEY) === '1'; } catch { return false; }
+}
+export function markInstallHandled() {
+  try { localStorage.setItem(HANDLED_KEY, '1'); } catch {}
+  emit();
+}
+
 function emit() {
   const s = state();
   subs.forEach(cb => { try { cb(s); } catch {} });
@@ -26,7 +38,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
-  emit();
+  markInstallHandled();            // remember permanently; also emits
 });
 
 export function onInstallStateChange(cb) {
@@ -63,6 +75,7 @@ export function state() {
     isInstalled: isStandalone(),
     canPrompt: canPrompt(),
     dismissedThisSession,
+    installHandled: readHandled(),
   };
 }
 

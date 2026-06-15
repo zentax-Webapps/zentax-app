@@ -7,6 +7,7 @@ export async function renderCompany(root, id) {
   const user = getUser();
   clear(root);
   root.appendChild(h('div', { class: 'card', id: 'co' }, 'Loading…'));
+  root.appendChild(h('div', { class: 'card', id: 'baskets' }, 'Loading baskets…'));
   root.appendChild(h('div', { class: 'card', id: 'tasks' }, 'Loading tasks…'));
 
   let company, members;
@@ -68,9 +69,11 @@ export async function renderCompany(root, id) {
     co.appendChild(tbl);
   }
 
+  await renderBaskets(root, company, user);
+
   try {
     const { data: tasks, error } = await sb.from('tasks')
-      .select('id, title, priority, due_date, status, company_id, companies(name), assigned_profile:profiles!tasks_assigned_to_fkey(full_name)')
+      .select('id, title, priority, due_date, status, company_id, basket_id, companies(name), baskets(name), assigned_profile:profiles!tasks_assigned_to_fkey(full_name)')
       .eq('company_id', id)
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -81,11 +84,97 @@ export async function renderCompany(root, id) {
     tc.appendChild(taskTable(tasks.map(t => ({
       ...t,
       company_name: t.companies?.name,
+      basket_name: t.baskets?.name,
       assigned_to_name: t.assigned_profile?.full_name,
     }))));
   } catch (e) {
     root.querySelector('#tasks').textContent = 'Failed: ' + e.message;
   }
+}
+
+async function renderBaskets(root, company, user) {
+  const mount = root.querySelector('#baskets');
+  if (!mount) return;
+  const canManage = ['super_admin', 'admin'].includes(user.role);
+  mount.innerHTML = '';
+  mount.appendChild(h('div', { class: 'flex between' }, [
+    h('h2', { style: 'margin:0;' }, 'Baskets'),
+    canManage
+      ? h('button', { class: 'btn secondary', onClick: () => openCreateBasket(root, company.id) }, '+ New Basket')
+      : null,
+  ]));
+  mount.appendChild(h('div', { class: 'muted', style: 'font-size:13px;margin-top:4px;' },
+    'Group related tasks together. Filter the task list by basket from the Tasks page.'));
+
+  let baskets = [];
+  try {
+    const { data, error } = await sb.from('baskets')
+      .select('id, name, color, notes').eq('company_id', company.id).order('name');
+    if (error) throw error;
+    baskets = data || [];
+  } catch (e) {
+    mount.appendChild(h('div', { class: 'alert error', style: 'margin-top:10px;' }, 'Failed to load baskets: ' + e.message));
+    return;
+  }
+
+  if (!baskets.length) {
+    mount.appendChild(h('div', { class: 'muted', style: 'margin-top:10px;' }, 'No baskets yet.'));
+    return;
+  }
+
+  // Task counts per basket (best-effort)
+  let counts = {};
+  try {
+    const { data: rows } = await sb.from('tasks')
+      .select('basket_id').eq('company_id', company.id).not('basket_id', 'is', null);
+    (rows || []).forEach(r => { counts[r.basket_id] = (counts[r.basket_id] || 0) + 1; });
+  } catch {}
+
+  const wrap = h('div', { class: 'basket-list', style: 'margin-top:12px;' },
+    baskets.map(b => h('div', { class: 'basket-row' }, [
+      h('a', { class: 'basket-chip', style: b.color ? ('border-color:' + b.color + ';color:' + b.color) : '',
+        href: '#/tasks?company_id=' + company.id + '&basket_id=' + b.id }, b.name),
+      h('span', { class: 'muted', style: 'font-size:12px;' }, (counts[b.id] || 0) + ' task' + ((counts[b.id] || 0) === 1 ? '' : 's')),
+      b.notes ? h('span', { class: 'muted', style: 'font-size:12px;' }, '· ' + b.notes) : null,
+      canManage
+        ? h('button', { class: 'btn secondary small', onClick: async () => {
+            if (!confirm('Delete basket "' + b.name + '"? Tasks stay, but lose this grouping.')) return;
+            try {
+              const { error } = await sb.from('baskets').delete().eq('id', b.id);
+              if (error) throw error;
+              showOk('Basket deleted'); renderBaskets(root, company, user);
+            } catch (e) { showError(e.message); }
+          } }, 'Delete')
+        : null,
+    ])));
+  mount.appendChild(wrap);
+}
+
+async function openCreateBasket(root, companyId) {
+  const name = h('input', { class: 'input', placeholder: 'e.g. Monthly GST, Payroll, Onboarding' });
+  const notes = h('input', { class: 'input', placeholder: 'Short description (optional)' });
+  const color = h('input', { type: 'color', value: '#0b6cf6', style: 'width:48px;height:38px;padding:2px;' });
+  modal('New Basket', h('div', {}, [
+    h('div', { class: 'field' }, [h('label', {}, 'Name'), name]),
+    h('div', { class: 'field' }, [h('label', {}, 'Notes'), notes]),
+    h('div', { class: 'field' }, [h('label', {}, 'Color'), color]),
+  ]), {
+    okLabel: 'Create',
+    onOk: async () => {
+      if (!name.value.trim()) { showError('Name is required'); return false; }
+      try {
+        const { error } = await sb.from('baskets').insert({
+          company_id: companyId,
+          name: name.value.trim(),
+          notes: notes.value.trim() || null,
+          color: color.value || null,
+        });
+        if (error) throw error;
+        showOk('Basket created');
+        renderCompany(root, companyId);
+      } catch (e) { showError(e.message); return false; }
+    }
+  });
 }
 
 async function openAddMember(root, companyId, currentMembers) {

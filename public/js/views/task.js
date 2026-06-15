@@ -32,8 +32,9 @@ export async function renderTask(root, id) {
         sb.from('tasks').select(`
           id, company_id, title, details, priority, due_date, status,
           close_requested_by, close_requested_at, closed_at, created_at, updated_at,
-          created_by, assigned_to,
+          created_by, assigned_to, basket_id,
           companies(id, name),
+          baskets(id, name),
           creator:profiles!tasks_created_by_fkey(id, full_name, role, email),
           assignee:profiles!tasks_assigned_to_fkey(id, full_name, role, email)
         `).eq('id', id).single(),
@@ -69,6 +70,9 @@ export async function renderTask(root, id) {
       priorityChip(task.priority),
       h('span', { class: 'muted' }, '· Company: '),
       h('a', { href: '#/companies/' + company.id }, company.name),
+      task.baskets ? h('span', { class: 'muted' }, ' · Basket: ') : null,
+      task.baskets ? h('a', { class: 'basket-chip',
+        href: '#/tasks?company_id=' + company.id + '&basket_id=' + task.baskets.id }, task.baskets.name) : null,
       task.due_date ? h('span', { class: 'muted' }, ' · Due: ' + fmtDay(task.due_date)) : null,
     ]));
     if (task.details) top.appendChild(h('p', { style: 'white-space:pre-wrap;margin:12px 0 0;' }, task.details));
@@ -168,10 +172,14 @@ export async function renderTask(root, id) {
   }
 
   async function openEdit(task, companyId) {
-    const { data: rows } = await sb.from('company_members')
-      .select('user_id, profiles:profiles!company_members_user_id_fkey(id, full_name, role)')
-      .eq('company_id', companyId);
+    const [{ data: rows }, { data: bk }] = await Promise.all([
+      sb.from('company_members')
+        .select('user_id, profiles:profiles!company_members_user_id_fkey(id, full_name, role)')
+        .eq('company_id', companyId),
+      sb.from('baskets').select('id, name').eq('company_id', companyId).order('name'),
+    ]);
     const members = (rows || []).map(r => r.profiles).filter(Boolean);
+    const baskets = bk || [];
 
     const title = h('input', { class: 'input', value: task.title });
     const details = h('textarea', { class: 'input' }, task.details || '');
@@ -182,6 +190,10 @@ export async function renderTask(root, id) {
     const assigneeSel = h('select', {},
       members.map(m => h('option', { value: m.id, selected: m.id === task.assigned_to },
         m.full_name + ' (' + m.role.replace('_',' ') + ')')));
+    const basketSel = h('select', {}, [
+      h('option', { value: '', selected: !task.basket_id }, '— No basket —'),
+      ...baskets.map(b => h('option', { value: b.id, selected: b.id === task.basket_id }, b.name)),
+    ]);
 
     modal('Edit Task', h('div', {}, [
       h('div', { class: 'field' }, [h('label', {}, 'Title'), title]),
@@ -191,6 +203,7 @@ export async function renderTask(root, id) {
         h('div', { class: 'field' }, [h('label', {}, 'Due date'), due]),
       ]),
       h('div', { class: 'field' }, [h('label', {}, 'Assigned to'), assigneeSel]),
+      h('div', { class: 'field' }, [h('label', {}, 'Basket'), basketSel]),
     ]), {
       onOk: async () => {
         try {
@@ -200,6 +213,7 @@ export async function renderTask(root, id) {
             priority: priority.value,
             due_date: due.value || null,
             assigned_to: assigneeSel.value,
+            basket_id: basketSel.value ? Number(basketSel.value) : null,
           }).eq('id', task.id);
           if (error) throw error;
           showOk('Updated');

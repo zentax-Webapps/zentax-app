@@ -1,10 +1,11 @@
 // App entry - boots auth, wires router, renders shell.
 import { bootstrap, getUser, onAuthChange, logout, ROLE_LABELS } from './auth.js';
 import { onRoute, parse } from './router.js';
+import { sb } from './sb.js';
 import { h, clear, showOk } from './ui.js';
 import { SUPABASE_URL, SUPABASE_ANON } from './config.js';
 import {
-  onInstallStateChange, triggerInstall, dismissForSession,
+  onInstallStateChange, triggerInstall, dismissForSession, markInstallHandled,
   platform, instructionsFor,
 } from './install.js';
 
@@ -36,6 +37,7 @@ const bannerLabel = banner?.querySelector('span');
 onInstallStateChange((s) => {
   if (!banner) return;
   if (s.isInstalled) { banner.hidden = true; return; }
+  if (s.installHandled) { banner.hidden = true; return; }   // already chose / installed
   if (s.dismissedThisSession) { banner.hidden = true; return; }
 
   if (s.canPrompt) {
@@ -65,6 +67,10 @@ installBtn?.addEventListener('click', async () => {
     // iOS / unsupported - open Account view which has step-by-step instructions
     location.hash = '#/account';
   }
+  // The user has now engaged with the install flow - don't show the banner
+  // again on this device (accepted, dismissed in the native dialog, or sent to
+  // the iOS instructions all count). They can still install from Account.
+  markInstallHandled();
 });
 dismissBtn?.addEventListener('click', () => dismissForSession());
 
@@ -83,13 +89,32 @@ if (SUPABASE_URL.includes('YOUR-PROJECT') || SUPABASE_ANON.includes('PASTE_')) {
 } else {
   (async () => {
     await bootstrap();
-    onAuthChange(() => render());
+    onAuthChange(() => { clientCompanyName = null; render(); });
     onRoute(() => render());
     render();
   })();
 }
 
 let sidebarOpen = false;
+let clientCompanyName = null;   // cached company label for client users
+
+// Fetch the client's company name once and drop it into the header tag.
+async function loadClientCompany(userId) {
+  if (clientCompanyName !== null) {
+    const tag = document.getElementById('company-tag');
+    if (tag) tag.textContent = clientCompanyName;
+    return;
+  }
+  try {
+    const { data } = await sb.from('company_members')
+      .select('companies(name)')
+      .eq('user_id', userId)
+      .limit(1);
+    clientCompanyName = data?.[0]?.companies?.name || '';
+  } catch { clientCompanyName = ''; }
+  const tag = document.getElementById('company-tag');
+  if (tag) tag.textContent = clientCompanyName;
+}
 
 function render() {
   const user = getUser();
@@ -123,6 +148,13 @@ function renderShell(route) {
     h('button', { class: 'menu-btn', onClick: () => { sidebarOpen = !sidebarOpen; render(); } }, '☰'),
     h('h1', {}, pageTitleFor(route)),
   ]);
+  // Clients see their company name in the header (they have no Companies nav).
+  if (CLIENT_ROLES.includes(user.role)) {
+    const tag = h('span', { class: 'company-tag', id: 'company-tag' },
+      clientCompanyName || '');
+    topbar.appendChild(tag);
+    loadClientCompany(user.id);
+  }
 
   const content = h('main', { class: 'content', id: 'view' });
   root.appendChild(h('div', { class: 'app-shell' }, [
@@ -138,9 +170,15 @@ function matchActive(path, match) {
   return path.startsWith(match);
 }
 
+const CLIENT_ROLES = ['client_owner', 'client_executive'];
+
 function buildNav(role) {
   const items = [{ label: 'Dashboard', path: '/', match: '' }];
-  items.push({ label: 'Companies', path: '/companies', match: 'companies' });
+  // Clients belong to a single company, so they don't browse a Companies list -
+  // their company is shown in the header instead.
+  if (!CLIENT_ROLES.includes(role)) {
+    items.push({ label: 'Companies', path: '/companies', match: 'companies' });
+  }
   items.push({ label: 'Tasks',     path: '/tasks',     match: 'tasks' });
   if (role === 'super_admin' || role === 'admin') {
     items.push({ label: 'Users', path: '/users', match: 'users' });
