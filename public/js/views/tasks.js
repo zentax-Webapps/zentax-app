@@ -1,0 +1,165 @@
+import { sb } from '../sb.js';
+import { getUser } from '../auth.js';
+import { h, clear, fmtDay, priorityChip, statusChip, modal, showOk, showError } from '../ui.js';
+
+export async function renderTasks(root, query = {}) {
+  const user = getUser();
+  clear(root);
+
+  const { data: companies = [] } = await sb.from('companies')
+    .select('id, name').order('name');
+
+  const filterCompany = h('select', {}, [
+    h('option', { value: '' }, 'All companies'),
+    ...companies.map(c => h('option', { value: c.id, selected: String(c.id) === String(query.company_id) }, c.name))
+  ]);
+  const filterStatus = h('select', {}, [
+    h('option', { value: '' }, 'All statuses'),
+    ['open','in_progress','close_requested','closed'].map(s =>
+      h('option', { value: s, selected: s === query.status }, s.replace('_',' '))),
+  ].flat());
+  const mine = h('label', { class: 'flex', style: 'gap:6px;' }, [
+    h('input', { type: 'checkbox', checked: query.mine === '1',
+      onChange: (e) => updateQuery({ mine: e.target.checked ? '1' : '' }) }),
+    'Mine only'
+  ]);
+  filterCompany.addEventListener('change', () => updateQuery({ company_id: filterCompany.value }));
+  filterStatus.addEventListener('change', () => updateQuery({ status: filterStatus.value }));
+
+  const newBtn = h('button', { class: 'btn',
+    onClick: () => openCreateTask(root, companies, query.company_id ? Number(query.company_id) : null)
+  }, '+ New Task');
+
+  root.appendChild(h('div', { class: 'card' }, [
+    h('div', { class: 'flex between' }, [
+      h('h2', { style: 'margin:0;' }, 'Tasks'),
+      newBtn,
+    ]),
+    h('div', { class: 'flex', style: 'margin-top:10px;' }, [filterCompany, filterStatus, mine])
+  ]));
+
+  const list = h('div', { class: 'card', id: 'list' }, 'Loading…');
+  root.appendChild(list);
+
+  if (query.new === '1') openCreateTask(root, companies, query.company_id ? Number(query.company_id) : null);
+
+  try {
+    let q = sb.from('tasks')
+      .select('id, title, priority, due_date, status, company_id, created_by, assigned_to, companies(name), assigned_profile:profiles!tasks_assigned_to_fkey(full_name)')
+      .order('status', { ascending: true })
+      .order('due_date', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false });
+    if (query.company_id) q = q.eq('company_id', Number(query.company_id));
+    if (query.status)    q = q.eq('status', query.status);
+    if (query.mine === '1') q = q.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+    const { data, error } = await q;
+    if (error) throw error;
+    list.innerHTML = '';
+    if (!data.length) { list.appendChild(h('div', { class: 'empty' }, 'No tasks match.')); return; }
+    list.appendChild(taskTable(data.map(t => ({
+      ...t,
+      company_name: t.companies?.name,
+      assigned_to_name: t.assigned_profile?.full_name,
+    }))));
+  } catch (e) {
+    list.textContent = 'Failed: ' + e.message;
+  }
+}
+
+export function taskTable(tasks) {
+  return h('table', { class: 'table' }, [
+    h('thead', {}, h('tr', {}, [
+      h('th', {}, 'Title'), h('th', {}, 'Company'), h('th', {}, 'Assigned to'),
+      h('th', {}, 'Priority'), h('th', {}, 'Due'), h('th', {}, 'Status'),
+    ])),
+    h('tbody', {}, tasks.map(t => h('tr', { style: 'cursor:pointer;',
+      onClick: () => location.hash = '#/tasks/' + t.id }, [
+        h('td', {}, t.title),
+        h('td', {}, t.company_name || ''),
+        h('td', {}, t.assigned_to_name || ''),
+        h('td', {}, priorityChip(t.priority)),
+        h('td', {}, fmtDay(t.due_date)),
+        h('td', {}, statusChip(t.status)),
+    ])))
+  ]);
+}
+
+function updateQuery(patch) {
+  const cur = parseHashQuery();
+  const next = { ...cur, ...patch };
+  Object.keys(next).forEach(k => { if (!next[k]) delete next[k]; });
+  const qs = Object.entries(next).map(([k,v]) => k + '=' + encodeURIComponent(v)).join('&');
+  location.hash = '#/tasks' + (qs ? '?' + qs : '');
+}
+function parseHashQuery() {
+  const raw = (location.hash || '').split('?')[1] || '';
+  const out = {};
+  raw.split('&').forEach(kv => { if (!kv) return; const [k,v] = kv.split('='); out[decodeURIComponent(k)] = decodeURIComponent(v || ''); });
+  return out;
+}
+
+async function openCreateTask(root, companies, defaultCompanyId) {
+  const user = getUser();
+  const title = h('input', { class: 'input', placeholder: 'Short task title' });
+  const details = h('textarea', { class: 'input', placeholder: 'Details, links, references…' });
+  const priority = h('select', {}, ['red','orange','yellow','green'].map(p =>
+    h('option', { value: p, selected: p === 'yellow' }, p.charAt(0).toUpperCase() + p.slice(1))));
+  const due = h('input', { class: 'input', type: 'date' });
+  const companySel = h('select', {}, [
+    h('option', { value: '' }, '— Pick a company —'),
+    ...companies.map(c => h('option', { value: c.id, selected: c.id === defaultCompanyId }, c.name))
+  ]);
+  const assigneeSel = h('select', {}, [h('option', { value: '' }, '— Pick a company first —')]);
+
+  async function refreshAssignees() {
+    const cid = Number(companySel.value);
+    assigneeSel.innerHTML = '';
+    if (!cid) {
+      assigneeSel.appendChild(h('option', { value: '' }, '— Pick a company first —'));
+      return;
+    }
+    const { data, error } = await sb.from('company_members')
+      .select('user_id, profiles:profiles!company_members_user_id_fkey(id, full_name, role)')
+      .eq('company_id', cid);
+    if (error) { showError(error.message); return; }
+    const members = (data || []).map(r => r.profiles).filter(Boolean);
+    assigneeSel.appendChild(h('option', { value: '' }, '— Pick assignee —'));
+    members.forEach(m => assigneeSel.appendChild(
+      h('option', { value: m.id, selected: m.id === user.id },
+        m.full_name + ' (' + (m.role || '').replace('_',' ') + ')')));
+  }
+  companySel.addEventListener('change', refreshAssignees);
+  if (defaultCompanyId) refreshAssignees();
+
+  modal('New Task', h('div', {}, [
+    h('div', { class: 'field' }, [h('label', {}, 'Title'), title]),
+    h('div', { class: 'field' }, [h('label', {}, 'Details'), details]),
+    h('div', { class: 'row' }, [
+      h('div', { class: 'field' }, [h('label', {}, 'Priority'), priority]),
+      h('div', { class: 'field' }, [h('label', {}, 'Due date'), due]),
+    ]),
+    h('div', { class: 'field' }, [h('label', {}, 'Company'), companySel]),
+    h('div', { class: 'field' }, [h('label', {}, 'Assigned to'), assigneeSel]),
+  ]), {
+    okLabel: 'Create',
+    onOk: async () => {
+      if (!title.value.trim()) { showError('Title is required'); return false; }
+      if (!companySel.value)   { showError('Pick a company'); return false; }
+      if (!assigneeSel.value)  { showError('Pick an assignee'); return false; }
+      try {
+        const { data, error } = await sb.from('tasks').insert({
+          company_id: Number(companySel.value),
+          title: title.value.trim(),
+          details: details.value || null,
+          priority: priority.value,
+          due_date: due.value || null,
+          assigned_to: assigneeSel.value,
+          created_by: user.id,
+        }).select('id').single();
+        if (error) throw error;
+        showOk('Task created');
+        location.hash = '#/tasks/' + data.id;
+      } catch (e) { showError(e.message); return false; }
+    }
+  });
+}

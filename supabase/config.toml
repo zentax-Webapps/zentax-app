@@ -1,0 +1,4 @@
+# Supabase project config. The CLI uses this to know which functions exist.
+# verify_jwt defaults to true — Supabase blocks unauthenticated calls before
+# our function runs. We then do a second super_admin check inside the function.
+project_id = "zentax-workflow"
