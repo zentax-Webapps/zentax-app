@@ -196,6 +196,9 @@ a.basket-chip:hover { background: rgba(11,108,246,.16); }
   display: flex; align-items: center; gap: 10px; z-index: 100;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
+/* The `hidden` attribute must win over the display:flex above, otherwise the
+   banner can never be hidden/closed. This more-specific rule guarantees it. */
+#install-banner[hidden] { display: none !important; }
 #install-banner > span { flex: 1; font-size: 14px; }
 #install-banner button { border: none; cursor: pointer; }
 #install-banner #install-btn {
