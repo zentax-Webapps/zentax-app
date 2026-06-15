@@ -1,7 +1,7 @@
 import { sb } from '../sb.js';
 import { getUser } from '../auth.js';
 import { h, clear, modal, roleBadge, showOk, showError } from '../ui.js';
-import { taskTable } from './tasks.js';
+import { taskTable, sortTasks } from './tasks.js';
 
 export async function renderCompany(root, id) {
   const user = getUser();
@@ -81,12 +81,12 @@ export async function renderCompany(root, id) {
     tc.innerHTML = '';
     tc.appendChild(h('h2', {}, 'Tasks in ' + company.name));
     if (!tasks.length) { tc.appendChild(h('div', { class: 'muted' }, 'No tasks.')); return; }
-    tc.appendChild(taskTable(tasks.map(t => ({
+    tc.appendChild(taskTable(sortTasks(tasks.map(t => ({
       ...t,
       company_name: t.companies?.name,
       basket_name: t.baskets?.name,
       assigned_to_name: t.assigned_profile?.full_name,
-    }))));
+    })))));
   } catch (e) {
     root.querySelector('#tasks').textContent = 'Failed: ' + e.message;
   }

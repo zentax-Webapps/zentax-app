@@ -174,12 +174,15 @@ function matchActive(path, match) {
 const CLIENT_ROLES = ['client_owner', 'client_executive'];
 
 function buildNav(role) {
-  const items = [{ label: 'Dashboard', path: '/', match: '' }];
-  // Clients belong to a single company, so they don't browse a Companies list -
-  // their company is shown in the header instead.
-  if (!CLIENT_ROLES.includes(role)) {
-    items.push({ label: 'Companies', path: '/companies', match: 'companies' });
+  // Clients get a deliberately minimal app: just their task list and account.
+  if (CLIENT_ROLES.includes(role)) {
+    return [
+      { label: 'My Tasks', path: '/', match: '' },
+      { label: 'Account',  path: '/account', match: 'account' },
+    ];
   }
+  const items = [{ label: 'Dashboard', path: '/', match: '' }];
+  items.push({ label: 'Companies', path: '/companies', match: 'companies' });
   items.push({ label: 'Tasks',     path: '/tasks',     match: 'tasks' });
   if (role === 'super_admin' || role === 'admin') {
     items.push({ label: 'Users', path: '/users', match: 'users' });
@@ -189,14 +192,19 @@ function buildNav(role) {
 }
 
 function pageTitleFor(route) {
-  const m = { '': 'Dashboard', companies: 'Companies', tasks: 'Tasks',
-              users: 'Users', account: 'Account' };
+  const user = getUser();
+  const isClient = user && CLIENT_ROLES.includes(user.role);
+  const m = { '': isClient ? 'My Tasks' : 'Dashboard', companies: 'Companies',
+              tasks: isClient ? 'My Tasks' : 'Tasks', users: 'Users', account: 'Account' };
   return m[route.parts[0] || ''] || 'Zentax Work Flow';
 }
 
 function routeTo(route, mount) {
+  const user = getUser();
   const [a, b] = route.parts;
   try {
+    // Clients land straight on their clean task list, not the office dashboard.
+    if (!a && CLIENT_ROLES.includes(user.role)) return renderTasks(mount, route.query);
     if (!a)                          return renderDashboard(mount);
     if (a === 'companies' && !b)     return renderCompanies(mount);
     if (a === 'companies' && b)      return renderCompany(mount, Number(b));

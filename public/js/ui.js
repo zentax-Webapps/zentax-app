@@ -94,6 +94,6 @@ export function roleBadge(role) {
   return h('span', { class: 'badge role-' + role }, labels[role] || role);
 }
 export function statusChip(s) {
-  const labels = { open: 'Open', in_progress: 'In Progress', close_requested: 'Awaiting Close', closed: 'Closed' };
+  const labels = { proposed: 'Awaiting Acceptance', open: 'Open', in_progress: 'In Progress', close_requested: 'Awaiting Close', closed: 'Closed' };
   return h('span', { class: 'status-chip ' + s }, labels[s] || s);
 }

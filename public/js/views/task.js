@@ -92,7 +92,28 @@ export async function renderTask(root, id) {
     ]));
 
     const actions = h('div', { class: 'actions', style: 'margin-top:12px;' });
-    if (task.status !== 'closed') {
+    if (task.status === 'proposed') {
+      const isOffice = isOfficeSide(user.role);
+      actions.appendChild(h('div', { class: 'alert warn', style: 'width:100%;' },
+        'Requested by ' + creator.full_name + '. '
+        + (isOffice ? 'Accept it to make it an active task and open the conversation.'
+                    : 'Waiting for the office team to accept this request.')));
+      if (isOffice) {
+        actions.appendChild(h('button', { class: 'btn success',
+          onClick: () => setStatus('open') }, 'Accept'));
+        actions.appendChild(h('button', { class: 'btn secondary',
+          onClick: () => openEdit(task, company.id) }, 'Edit before accepting'));
+        actions.appendChild(h('button', { class: 'btn danger', onClick: async () => {
+          if (!confirm('Reject and delete this request?')) return;
+          try {
+            const { error } = await sb.from('tasks').delete().eq('id', task.id);
+            if (error) throw error;
+            showOk('Request rejected');
+            location.hash = '#/tasks';
+          } catch (e) { showError(e.message); }
+        } }, 'Reject'));
+      }
+    } else if (task.status !== 'closed') {
       if (task.status !== 'close_requested') {
         actions.appendChild(h('button', { class: 'btn', onClick: () => setStatus('close_requested') }, 'Request Close'));
       } else {
@@ -138,7 +159,10 @@ export async function renderTask(root, id) {
 
     const composer = root.querySelector('#composer');
     composer.innerHTML = '';
-    if (task.status !== 'closed') {
+    if (task.status === 'proposed') {
+      composer.appendChild(h('div', { class: 'muted' },
+        'The conversation opens once the office team accepts this request.'));
+    } else if (task.status !== 'closed') {
       const input = h('textarea', { class: 'input', placeholder: 'Type a message…', rows: 2 });
       const send = h('button', { class: 'btn', onClick: async () => {
         if (!input.value.trim()) return;
