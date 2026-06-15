@@ -6,8 +6,21 @@ export async function renderTasks(root, query = {}) {
   const user = getUser();
   clear(root);
 
-  const { data: companies = [] } = await sb.from('companies')
-    .select('id, name').order('name');
+  // Clients are hard-scoped to the companies they're assigned to. We fetch
+  // their own memberships (filtered by user_id) so cross-company tasks never
+  // show in the UI - this holds even if a server policy were misconfigured.
+  const isClient = ['client_owner', 'client_executive'].includes(user.role);
+  let companies = [];
+  if (isClient) {
+    const { data: cm = [] } = await sb.from('company_members')
+      .select('companies(id, name)').eq('user_id', user.id);
+    companies = (cm || []).map(r => r.companies).filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    const { data = [] } = await sb.from('companies').select('id, name').order('name');
+    companies = data || [];
+  }
+  const myCompanyIds = companies.map(c => c.id);
 
   // Baskets only make sense within a single company, so the basket filter
   // appears once a company is chosen.
@@ -19,7 +32,7 @@ export async function renderTasks(root, query = {}) {
   }
 
   const filterCompany = h('select', {}, [
-    h('option', { value: '' }, 'All companies'),
+    h('option', { value: '' }, isClient ? 'All my companies' : 'All companies'),
     ...companies.map(c => h('option', { value: c.id, selected: String(c.id) === String(query.company_id) }, c.name))
   ]);
   const filterStatus = h('select', {}, [
@@ -65,6 +78,8 @@ export async function renderTasks(root, query = {}) {
       .order('status', { ascending: true })
       .order('due_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false });
+    // Clients: never query beyond their assigned companies.
+    if (isClient) q = q.in('company_id', myCompanyIds.length ? myCompanyIds : [-1]);
     if (query.company_id) q = q.eq('company_id', Number(query.company_id));
     if (query.status)    q = q.eq('status', query.status);
     if (query.basket_id === 'none')      q = q.is('basket_id', null);

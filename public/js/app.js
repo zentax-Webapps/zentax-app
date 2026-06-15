@@ -5,7 +5,7 @@ import { sb } from './sb.js';
 import { h, clear, showOk } from './ui.js';
 import { SUPABASE_URL, SUPABASE_ANON } from './config.js';
 import {
-  onInstallStateChange, triggerInstall, dismissForSession, markInstallHandled,
+  onInstallStateChange, triggerInstall, markInstallHandled,
   platform, instructionsFor,
 } from './install.js';
 
@@ -31,7 +31,7 @@ if ('serviceWorker' in navigator) {
 // hide it - the user can always trigger install from Account too.
 const banner = document.getElementById('install-banner');
 const installBtn = document.getElementById('install-btn');
-const dismissBtn = document.getElementById('install-dismiss');
+const closeBtn = document.getElementById('install-close');
 const bannerLabel = banner?.querySelector('span');
 
 onInstallStateChange((s) => {
@@ -72,7 +72,8 @@ installBtn?.addEventListener('click', async () => {
   // the iOS instructions all count). They can still install from Account.
   markInstallHandled();
 });
-dismissBtn?.addEventListener('click', () => dismissForSession());
+// The × permanently dismisses the banner on this device (it won't come back).
+closeBtn?.addEventListener('click', () => { banner.hidden = true; markInstallHandled(); });
 
 // ---- Config-not-set guard ----
 if (SUPABASE_URL.includes('YOUR-PROJECT') || SUPABASE_ANON.includes('PASTE_')) {

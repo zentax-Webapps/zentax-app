@@ -203,9 +203,16 @@ a.basket-chip:hover { background: rgba(11,108,246,.16); }
   padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 14px;
 }
 #install-banner .link { background: transparent; color: #cbd5e1; padding: 6px 8px; font-size: 13px; }
+#install-banner #install-close {
+  background: rgba(255,255,255,.12); color: #fff;
+  width: 30px; height: 30px; min-width: 30px; border-radius: 50%;
+  font-size: 20px; line-height: 1; display: flex; align-items: center;
+  justify-content: center; padding: 0; flex: 0 0 auto;
+}
+#install-banner #install-close:hover { background: rgba(255,255,255,.25); }
 @media (max-width: 480px) {
-  #install-banner { flex-wrap: wrap; gap: 8px; }
-  #install-banner > span { flex-basis: 100%; }
+  #install-banner { flex-wrap: nowrap; gap: 8px; }
+  #install-banner > span { flex: 1; min-width: 0; }
 }
 
 /* ---- Modal ---- */

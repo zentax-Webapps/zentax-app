@@ -1,5 +1,5 @@
 // Service worker for PWA install + offline shell cache.
-const CACHE = 'zentax-v3';
+const CACHE = 'zentax-v4';
 const SHELL = [
   '/', '/index.html', '/manifest.json',
   '/css/styles.css',
