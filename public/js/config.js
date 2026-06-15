@@ -8,4 +8,4 @@
 // =====================================================================
 
 export const SUPABASE_URL  = "https://xqdzfdxvpxjsplbvpkyc.supabase.co";
-export const SUPABASE_ANON = "PeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxZHpmZHh2cHhqc3BsYnZwa3ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MDI2NTIsImV4cCI6MjA5NzA3ODY1Mn0.4X0x1jRAufYbpHA9QMybbA69EiWFQsJ18I1n8ACk41U";
+export const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxZHpmZHh2cHhqc3BsYnZwa3ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MDI2NTIsImV4cCI6MjA5NzA3ODY1Mn0.4X0x1jRAufYbpHA9QMybbA69EiWFQsJ18I1n8ACk41U";
